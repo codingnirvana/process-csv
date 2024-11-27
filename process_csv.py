@@ -3,6 +3,9 @@ import google.generativeai as genai
 import logging
 import warnings
 from absl import logging as absl_logging
+import argparse
+from dotenv import load_dotenv
+import time
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -70,40 +73,63 @@ def save_csv_data(csv_data, csv_path):
         return False
 
 def process_pdf_to_csv(pdf_path, api_key, model_name='gemini-1.5-flash'):
-    """Process a single PDF file and return the result."""
+    """Process a PDF file and save the extracted data as CSV"""
     try:
-        # Create a timestamped filename for the CSV
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        filename = os.path.basename(pdf_path)
-        csv_filename = f"{os.path.splitext(filename)[0]}_{timestamp}.csv"
-        csv_path = os.path.join("/Users/rajeshm/Downloads/stp_files/csv_flash/", csv_filename)
-
-        # Ensure output directory exists
-        if not os.path.exists("/Users/rajeshm/Downloads/stp_files/csv_flash/"):
-            os.makedirs("/Users/rajeshm/Downloads/stp_files/csv_flash/")
-
-        # Extract CSV data
+        # Extract CSV data from PDF
         csv_data = extract_csv_from_pdf(pdf_path, api_key, model_name)
         
-        if not csv_data:
-            raise Exception("Failed to extract CSV data from PDF")
-
-        # Save CSV data
-        save_csv_data(csv_data, csv_path)
-
-        return {
-            'csv_data': csv_data,
-            'csv_path': csv_path,
-            'csv_filename': csv_filename,
-            'pdf_path': pdf_path
-        }
-
+        if csv_data:
+            # Create output filename based on input PDF name
+            pdf_filename = os.path.basename(pdf_path)
+            csv_filename = os.path.splitext(pdf_filename)[0] + '.csv'
+            
+            # Save to the same directory as the input PDF
+            output_dir = os.path.dirname(pdf_path)
+            csv_path = os.path.join(output_dir, csv_filename)
+            
+            # Save the CSV data
+            save_csv_data(csv_data, csv_path)
+            logging.info(f"Successfully saved CSV to: {csv_path}")
+            return csv_path
+        else:
+            logging.warning("No data was extracted from the PDF")
+            return None
+            
     except Exception as e:
         logging.error(f"Error in process_pdf_to_csv: {str(e)}")
         raise e
 
 if __name__ == "__main__":
-    api_key = os.getenv('GEMINI_API_KEY', '')
-    model_name = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
-    pdf_path = "/Users/rajeshm/Downloads/stp_files/your_pdf_file.pdf"
-    process_pdf_to_csv(pdf_path, api_key, model_name)
+    load_dotenv()
+    
+    parser = argparse.ArgumentParser(description='Convert PDF tables to CSV format')
+    parser.add_argument('pdf_path', help='Path to the input PDF file')
+    parser.add_argument('--api_key', help='Gemini API key (optional, can be set via GEMINI_API_KEY env var)')
+    parser.add_argument('--model', default='gemini-1.5-flash', help='Gemini model name (default: gemini-1.5-flash)')
+    
+    args = parser.parse_args()
+    
+    api_key = args.api_key or os.getenv('GEMINI_API_KEY')
+    if not api_key:
+        print("Error: Gemini API key not provided. Set it via --api_key or GEMINI_API_KEY environment variable")
+        exit(1)
+    
+    try:
+        csv_path = process_pdf_to_csv(
+            pdf_path=args.pdf_path,
+            api_key=api_key,
+            model_name=args.model
+        )
+        
+        if csv_path:
+            print(f"Successfully converted {args.pdf_path} to {csv_path}")
+        else:
+            print("No data was extracted from the PDF")
+            exit(1)
+    
+    except FileNotFoundError:
+        print(f"Error: Could not find PDF file: {args.pdf_path}")
+        exit(1)
+    except Exception as e:
+        print(f"Error processing file: {str(e)}")
+        exit(1)

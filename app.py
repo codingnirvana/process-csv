@@ -29,13 +29,17 @@ def create_flow():
         client_id = os.getenv('GOOGLE_CLIENT_ID')
         client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
         is_production = os.getenv('PRODUCTION', 'false').lower() == 'true'
-        app_url = os.getenv('APP_URL', 'http://localhost:8501')
-
+        
         if not client_id or not client_secret:
             raise ValueError("Missing OAuth credentials. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET")
 
-        # Production redirect URI should match your domain
-        redirect_uri = f"{app_url}/" if is_production else "http://localhost:8501/"
+        # Define production and development URIs
+        prod_uri = "https://pdf-to-csv-paani.streamlit.app"
+        dev_uri = "http://localhost:8501"
+        
+        # Set base URI based on environment
+        base_uri = prod_uri if is_production else dev_uri
+        redirect_uri = f"{base_uri}/"  # Use trailing slash version as primary
 
         flow = Flow.from_client_config(
             {
@@ -44,18 +48,29 @@ def create_flow():
                     "client_secret": client_secret,
                     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                     "token_uri": "https://oauth2.googleapis.com/token",
-                    "redirect_uris": [redirect_uri],
+                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                    "redirect_uris": [
+                        f"{prod_uri}/",  # Production with trailing slash
+                        f"{prod_uri}",   # Production without trailing slash
+                        f"{dev_uri}/",   # Development with trailing slash
+                        f"{dev_uri}"     # Development without trailing slash
+                    ],
+                    "javascript_origins": [
+                        prod_uri,
+                        dev_uri
+                    ]
                 }
             },
-            scopes=['https://www.googleapis.com/auth/drive.file'],
+            scopes=[
+                'https://www.googleapis.com/auth/drive.file',  # Minimal scope for file access
+            ],
             redirect_uri=redirect_uri
         )
 
-        # Additional production settings
-        if is_production:
-            flow.prompt = "consent"  # Always show consent screen in production
-            flow.access_type = "offline"  # Get refresh token
-            
+        # Set additional security parameters
+        flow.prompt = "consent"  # Always show consent screen
+        flow.access_type = "offline"  # Get refresh token
+        
         return flow
     except Exception as e:
         st.error(f"Failed to create OAuth flow: {str(e)}")
