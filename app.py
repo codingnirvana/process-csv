@@ -18,9 +18,12 @@ load_dotenv()
 
 # OAuth 2.0 configuration
 SCOPES = [
-    'https://www.googleapis.com/auth/drive',  # Full Drive access
-    'https://www.googleapis.com/auth/userinfo.email',
-    'openid'
+    'https://www.googleapis.com/auth/drive.file',  # Per-file access to files created or opened by the app
+    'https://www.googleapis.com/auth/drive.readonly',  # Read-only access to file metadata and files
+    'https://www.googleapis.com/auth/drive.metadata.readonly',  # Read-only access to file metadata
+    'https://www.googleapis.com/auth/userinfo.email',  # Get user's email address
+    'https://www.googleapis.com/auth/userinfo.profile',  # Get user's basic profile info
+    'openid'  # OpenID Connect
 ]
 
 def create_flow():
