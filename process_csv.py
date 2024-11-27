@@ -100,7 +100,8 @@ def process_pdf_to_csv(pdf_path, api_key, model_name='gemini-1.5-flash'):
         raise e
 
 if __name__ == "__main__":
-    load_dotenv()
+    # Load environment variables
+    load_dotenv(dotenv_path=".env", override=True)
     
     parser = argparse.ArgumentParser(description='Convert PDF tables to CSV format')
     parser.add_argument('pdf_path', help='Path to the input PDF file')
