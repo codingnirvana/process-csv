@@ -1,23 +1,48 @@
 import streamlit as st
 import os
+import json
+from browser_storage import BrowserStorage
+
+# Create storage instance only when needed
+_storage = None
+DEFAULT_SETTINGS = {
+    'api_key': '',
+    'model': 'gemini-1.5-flash'
+}
+
+def get_storage():
+    """Get or create the storage instance"""
+    global _storage
+    if _storage is None:
+        _storage = BrowserStorage(prefix="gemini_")
+    return _storage
+
+def get_settings():
+    """Get current settings or return defaults"""
+    storage = get_storage()
+    settings = storage.get_credential("settings")
+    if not settings:
+        settings = DEFAULT_SETTINGS.copy()
+    return settings
+
+def save_settings(settings):
+    """Save settings to storage"""
+    storage = get_storage()
+    storage.save_credential("settings", settings)
 
 def show_settings():
     """Show settings page"""
     st.title("Settings")
     
-    # Initialize settings in session state if not present
-    if 'gemini_settings' not in st.session_state:
-        st.session_state.gemini_settings = {
-            'api_key': '',
-            'model': 'gemini-1.5-flash'
-        }
+    # Get current settings
+    current_settings = get_settings()
     
     st.subheader("🔑 Gemini API Configuration")
     
     # API Key input
     api_key = st.text_input(
         "Gemini API Key",
-        value=st.session_state.gemini_settings.get('api_key', ''),
+        value=current_settings.get('api_key', ''),
         type="password",
         help="Enter your Gemini API key. Get one from https://makersuite.google.com/app/apikey"
     )
@@ -33,22 +58,32 @@ def show_settings():
         options=list(model_options.keys()),
         format_func=lambda x: model_options[x],
         index=list(model_options.keys()).index(
-            st.session_state.gemini_settings.get('model', 'gemini-1.5-flash')
+            current_settings.get('model', 'gemini-1.5-flash')
         ),
         help="Select which Gemini model to use for PDF processing"
     )
     
-    # Save settings button
-    if st.button("💾 Save Settings"):
-        st.session_state.gemini_settings = {
+    # Save button
+    if st.button("Save Settings"):
+        new_settings = {
             'api_key': api_key,
             'model': selected_model
         }
-        st.success("✅ Settings saved successfully!")
+        save_settings(new_settings)
+        st.success("Settings saved successfully!")
+        
+        # Add a debug message to show current settings
+        st.write("Current settings:", {
+            'model': new_settings['model'],
+            'api_key': '***' if new_settings['api_key'] else 'Not set'
+        })
+        
+        # Show all stored credentials for debugging
+        storage = get_storage()
+        st.write("All stored credentials:", storage.list_credentials())
 
 def check_settings():
     """Check if required settings are configured"""
-    return (
-        'gemini_settings' in st.session_state and
-        st.session_state.gemini_settings.get('api_key')
-    )
+    settings = get_settings()
+    api_key = settings.get('api_key')
+    return bool(api_key and api_key.strip())

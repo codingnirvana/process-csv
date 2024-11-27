@@ -1,10 +1,10 @@
+streamlit>=1.24.0
 google-generativeai>=0.3.0
-requests>=2.31.0
-python-dotenv>=1.0.0
-absl-py>=2.0.0
-streamlit>=1.30.0
-pandas>=2.0.0
-PyPDF2>=3.0.0
 google-auth-oauthlib>=1.0.0
-google-api-python-client>=2.0.0
+google-api-python-client>=2.95.0
 google-auth-httplib2
+python-dotenv>=1.0.0
+streamlit-local-storage==0.0.25
+PyPDF2>=3.0.0
+pandas>=2.0.0
+absl-py>=2.0.0
