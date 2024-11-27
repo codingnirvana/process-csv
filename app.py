@@ -55,7 +55,7 @@ def create_flow():
 
         flow = Flow.from_client_config(
             client_config,
-            scopes=['https://www.googleapis.com/auth/drive.file'],
+            scopes=SCOPES,
             redirect_uri=redirect_uri
         )
 
