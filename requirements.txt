@@ -1,3 +1,10 @@
-google-generativeai
-requests
-python-dotenv
+google-generativeai>=0.3.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+absl-py>=2.0.0
+streamlit>=1.30.0
+pandas>=2.0.0
+PyPDF2>=3.0.0
+google-auth-oauthlib>=1.0.0
+google-api-python-client>=2.0.0
+google-auth-httplib2
