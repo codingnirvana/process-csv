@@ -119,16 +119,6 @@ def main():
         # Get or create folders
         st.subheader("Google Drive Folders")
         
-        # Simple create folder button first
-        if st.button("➕ Create New Folder"):
-            with st.spinner("Creating folder..."):
-                new_folder_name = f"PDF_Input_{time.strftime('%Y%m%d_%H%M%S')}"
-                folder_id = gdrive_handler.create_folder(new_folder_name)
-                st.session_state.input_folder_id = folder_id
-                st.success(f"Created folder: {new_folder_name}")
-                time.sleep(1)
-                st.rerun()
-        
         # List folders with error handling
         with st.spinner("Loading folders..."):
             folders = gdrive_handler.list_folders()
@@ -142,28 +132,50 @@ def main():
                     "name": folder["name"]
                 })
             
-            # Show folder selection
-            selected = st.selectbox(
-                "Select a folder containing PDFs:",
-                options=folder_options,
-                format_func=lambda x: x["name"]
-            )
+            # Create columns for input and output folder selection
+            col1, col2 = st.columns(2)
             
-            if selected and selected["id"]:
-                st.write(f"Selected: {selected['name']}")
-                st.markdown(f"🔗 [Open in Google Drive](https://drive.google.com/drive/folders/{selected['id']})")
+            with col1:
+                st.subheader("📁 Input Folder")
+                selected_input = st.selectbox(
+                    "Select folder containing PDFs:",
+                    options=folder_options,
+                    format_func=lambda x: x["name"],
+                    key="input_folder"
+                )
                 
+                if selected_input and selected_input["id"]:
+                    st.markdown(f"🔗 [Open in Drive](https://drive.google.com/drive/folders/{selected_input['id']})")
+            
+            with col2:
+                st.subheader("📁 Output Folder")
+                selected_output = st.selectbox(
+                    "Select folder for CSV output:",
+                    options=folder_options,
+                    format_func=lambda x: x["name"],
+                    key="output_folder"
+                )
+                
+                if selected_output and selected_output["id"]:
+                    st.markdown(f"🔗 [Open in Drive](https://drive.google.com/drive/folders/{selected_output['id']})")
+            
+            # Create New Folder button
+            if st.button("➕ Create New Folder"):
+                with st.spinner("Creating folder..."):
+                    new_folder_name = f"PDF_Processing_{time.strftime('%Y%m%d_%H%M%S')}"
+                    folder_id = gdrive_handler.create_folder(new_folder_name)
+                    st.success(f"Created folder: {new_folder_name}")
+                    time.sleep(1)
+                    st.rerun()
+            
+            # Only proceed if both input and output folders are selected
+            if selected_input and selected_input["id"] and selected_output and selected_output["id"]:
                 # List PDF files
                 with st.spinner("Checking for PDF files..."):
-                    pdf_files = gdrive_handler.list_files(selected["id"], "application/pdf", recursive=True)
+                    pdf_files = gdrive_handler.list_files(selected_input["id"], "application/pdf", recursive=True)
                     if pdf_files:
                         st.success(f"Found {len(pdf_files)} PDF files")
                         if st.button("🔄 Process Files", type="primary"):
-                            # Create output folder quietly
-                            timestamp = time.strftime("%Y%m%d_%H%M%S")
-                            output_folder_name = f"CSV_Output_{timestamp}"
-                            output_folder_id = gdrive_handler.create_folder(output_folder_name)
-                            
                             # Setup progress tracking
                             progress_bar = st.progress(0)
                             status_text = st.empty()
@@ -187,15 +199,15 @@ def main():
                                             csv_data = extract_csv_from_pdf(tmp_pdf.name)
                                             
                                             if csv_data:
-                                                # Create CSV filename
-                                                csv_filename = f"{os.path.splitext(pdf_file['name'])[0]}_{timestamp}.csv"
+                                                # Create CSV filename - just change extension from .pdf to .csv
+                                                csv_filename = os.path.splitext(pdf_file['name'])[0] + '.csv'
                                                 
                                                 # Save and upload CSV
                                                 with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_csv:
                                                     save_csv_data(csv_data, tmp_csv.name)
                                                     gdrive_handler.upload_file(
                                                         tmp_csv.name,
-                                                        output_folder_id,
+                                                        selected_output["id"],
                                                         new_filename=csv_filename
                                                     )
                                                     os.unlink(tmp_csv.name)
@@ -220,7 +232,7 @@ def main():
                                     st.success(f"✅ Successfully processed all {processed} files!")
                                 
                                 # Show output folder link
-                                st.markdown(f"🔗 [Open Output Folder](https://drive.google.com/drive/folders/{output_folder_id})")
+                                st.markdown(f"🔗 [View Results in Drive](https://drive.google.com/drive/folders/{selected_output['id']})")
                                 
                             except Exception as e:
                                 st.error(f"❌ Processing failed: {str(e)}")
@@ -228,7 +240,12 @@ def main():
                             finally:
                                 progress_bar.empty()
                     else:
-                        st.warning("No PDF files found in this folder")
+                        st.warning("No PDF files found in the selected input folder")
+            elif selected_input and selected_input["id"]:
+                st.info("Please select an output folder for the CSV files")
+            elif selected_output and selected_output["id"]:
+                st.info("Please select an input folder containing PDF files")
+
         else:
             st.warning("No folders found. Click 'Create New Folder' above to create one.")
     
