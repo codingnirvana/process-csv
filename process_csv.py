@@ -5,17 +5,15 @@ import csv
 from dotenv import load_dotenv
 import atexit
 import signal
+import argparse
+import base64
+from tqdm import tqdm
 
 # Load environment variables from .env file
 load_dotenv()
 
 # Configure Gemini API key
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-
-# Input and output directories
-# Update these paths to point to your PDF and CSV directories
-PDF_DIR = "path/to/pdf/directory"  # Example: "~/Documents/pdfs/"
-CSV_DIR = "path/to/csv/directory"  # Example: "~/Documents/pdfs/csv/"
 
 # Global model instance
 model = None
@@ -51,42 +49,61 @@ def get_model():
         model = genai.GenerativeModel(model_name="gemini-1.5-pro", generation_config=generation_config)
     return model
 
-def extract_csv_from_pdf(pdf_path):
-    """Uploads a PDF and extracts CSV data using Gemini API."""
+def extract_csv_from_file(file_path):
+    """Uploads a file (PDF or JPG) and extracts CSV data using Gemini API."""
     try:
-        file = genai.upload_file(pdf_path, mime_type="application/pdf")
-        print(f"Uploaded file '{file.display_name}' as: {file.uri}")
-
-        # Wait for file to be processed (if necessary)
-        while file.state.name == "PROCESSING":
-            print(".", end="", flush=True)
-            time.sleep(5)  # Check every 5 seconds
-            file = genai.get_file(file.name)
-
-        if file.state.name != "ACTIVE":
-            raise Exception(f"File {file.name} failed to process: {file.state.name}")
+        # Get file extension
+        file_extension = os.path.splitext(file_path)[1].lower()
+        
+        # Set mime type based on file extension
+        mime_type = "application/pdf" if file_extension == ".pdf" else "image/jpeg"
+        
+        # Create the prompt based on file type
+        if file_extension == ".pdf":
+            prompt = """Extract all tabular data from this PDF. There is a table of parameters with multiple columns. 
+            Please extract all the data from the table  and only that table and format it as a CSV. Ignore any other data/tables/text.
+            Include headers if present. Each pdf will have date of collection. Use that as the way to create the filename. F
+            For example, if the file name is 31-08-2023.pdf, then the CSV file should be named Aug_2023.csv. Format the data in a clean, structured way."""
+        else:  # JPG
+            prompt = """This image contains tabular data. There is a table of parameters with multiple columns. 
+            Please extract all the data from the table and only that table and format it as a CSV. Ignore any other data/tables/text.
+            Include headers if present. Each pdf will have date of collection. Use that as the way to create the filename. F
+            For example, if the file name is 31-08-2023.pdf, then the CSV file should be named Aug_2023.csv. Format the data in a clean, structured way."""
 
         # Get model instance
         model = get_model()
 
-        # Prompt Gemini to extract the CSV
-        prompt = """Please extract the data from this PDF into CSV format. 
-        Follow these guidelines:
-        1. Extract all tabular data
-        2. Maintain column headers
-        3. Output in standard CSV format
-        4. Preserve all numerical values
-        5. Handle any currency or date formats appropriately"""
+        # Create parts for the model
+        parts = [
+            {
+                "inline_data": {
+                    "mime_type": mime_type,
+                    "data": base64.b64encode(open(file_path, "rb").read()).decode()
+                }
+            },
+            prompt
+        ]
 
-        response = model.generate_content([file, prompt])
-        
-        if response.text:
-            return response.text
-        else:
-            raise Exception("No response received from the model")
+        # Generate response
+        try:
+            response = model.generate_content(parts, stream=False)
             
+            if response and response.text:
+                return response.text.strip()
+            else:
+                print(f"No text response received for {file_path}")
+                return None
+                
+        except Exception as api_error:
+            print(f"API Error for {file_path}: {str(api_error)}")
+            if hasattr(api_error, 'status_code'):
+                print(f"Status Code: {api_error.status_code}")
+            return None
+
     except Exception as e:
-        print(f"Error in extract_csv_from_pdf: {str(e)}")
+        print(f"Error processing file {file_path}: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
         return None
 
 
@@ -101,39 +118,60 @@ def save_csv_data(csv_data, csv_path):
         print(f"Error saving CSV to {csv_path}: {e}")
 
 
-def process_pdfs(pdf_dir, csv_dir):
-    """Processes all PDF files in a directory."""
-    print(f"Looking for PDFs in: {pdf_dir}")
+def process_files(input_dir, csv_dir):
+    """Processes all PDF and JPG files in a directory."""
+    # Create CSV directory if it doesn't exist
+    os.makedirs(csv_dir, exist_ok=True)
+
+    # Get list of PDF and JPG files
+    files = [f for f in os.listdir(input_dir) if f.lower().endswith(('.pdf', '.jpg', '.jpeg'))]
     
-    if not os.path.exists(pdf_dir):
-        print(f"Error: PDF directory does not exist: {pdf_dir}")
+    if not files:
+        print(f"No PDF or JPG files found in {input_dir}")
         return
+
+    print(f"Found {len(files)} files to process")
+    
+    # Process each file with progress bar
+    for file_name in tqdm(files, desc="Processing files", unit="file"):
+        file_path = os.path.join(input_dir, file_name)
+        base_name = os.path.splitext(file_name)[0]
+        csv_path = os.path.join(csv_dir, f"{base_name}.csv")
         
-    if not os.path.exists(csv_dir):
-        os.makedirs(csv_dir)
-
-    files = os.listdir(pdf_dir)
-    print(f"Found {len(files)} files in directory")
-    pdf_files = [f for f in files if f.endswith('.pdf')]
-    print(f"Found {len(pdf_files)} PDF files")
-
-    for filename in pdf_files:
-        pdf_path = os.path.join(pdf_dir, filename)
-        csv_path = os.path.join(csv_dir, filename[:-4] + ".csv")
-
-        print(f"Processing {filename}...")
-        try:
-            csv_data = extract_csv_from_pdf(pdf_path)
-
-            if csv_data:  # Check if CSV extraction was successful
-                save_csv_data(csv_data, csv_path)
-                print(f"CSV saved to {csv_path}")
-            else:
-                print(f"Failed to extract CSV data from {pdf_path}")
-
-        except Exception as e:
-            print(f"Error processing {filename}: {e}")
+        # Skip if CSV already exists
+        if os.path.exists(csv_path):
+            tqdm.write(f"Skipping {file_name} - CSV already exists")
+            continue
+            
+        tqdm.write(f"Processing {file_name}...")
+        
+        # Extract CSV data
+        csv_data = extract_csv_from_file(file_path)
+        
+        if csv_data:
+            # Save CSV data
+            save_csv_data(csv_data, csv_path)
+            tqdm.write(f"Successfully processed {file_name}")
+        else:
+            tqdm.write(f"Failed to process {file_name}")
+        
+        # Add a small delay to avoid rate limiting
+        time.sleep(1)
 
 
 if __name__ == "__main__":
-    process_pdfs(PDF_DIR, CSV_DIR)
+    parser = argparse.ArgumentParser(description='Process PDF and JPG files to extract CSV data.')
+    parser.add_argument('input_dir', help='Directory containing PDF and JPG files')
+    parser.add_argument('output_dir', help='Directory where CSV files will be saved')
+    
+    args = parser.parse_args()
+    
+    # Convert relative paths to absolute paths
+    input_dir = os.path.abspath(args.input_dir)
+    output_dir = os.path.abspath(args.output_dir)
+    
+    if not os.path.exists(input_dir):
+        print(f"Error: Input directory '{input_dir}' does not exist")
+        exit(1)
+        
+    process_files(input_dir, output_dir)
