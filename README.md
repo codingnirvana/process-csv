@@ -40,14 +40,29 @@ GEMINI_API_KEY=your_api_key_here
 Run the script by providing the input directory containing your PDF and image files:
 
 ```bash
+# Process single directory
 python process_csv.py /path/to/input/directory
+
+# Process directory and all subdirectories recursively
+python process_csv.py -r /path/to/input/directory
 ```
 
 The script will:
-1. Create a 'csv' subdirectory in your input directory
-2. Process all PDF and JPG files in the input directory
-3. Generate CSV files in the 'csv' subdirectory
+1. Create a 'csv' subdirectory in each directory containing PDF/JPG files
+2. Process all PDF and JPG files in the directory (and subdirectories if -r is used)
+3. Generate CSV files in the respective 'csv' subdirectories
 4. Skip any files that have already been processed
+
+### Directory Structure Example
+```
+input_directory/
+├── file1.pdf           # Processed to input_directory/csv/
+├── subfolder1/
+│   ├── file2.pdf      # Processed to subfolder1/csv/
+│   └── file3.jpg      # Processed to subfolder1/csv/
+└── subfolder2/
+    └── file4.pdf      # Processed to subfolder2/csv/
+```
 
 ### Output Format
 

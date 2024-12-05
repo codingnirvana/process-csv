@@ -2,12 +2,21 @@
 
 ## [2024-11-05] Bug Fixes and Improvements
 
+### New Feature: Recursive Processing
+- Added recursive directory processing
+  - New `-r` or `--recursive` flag for processing subdirectories
+  - Creates 'csv' folders in each directory containing PDFs/JPGs
+  - Maintains original directory structure
+  - Example: `python process_csv.py -r /data/pdfs`
+  - Skips 'csv' directories during recursion
+
 ### Directory Structure Changes
 - Simplified output organization
-  - Creates a 'csv' folder within the input directory
-  - All generated CSV files are stored in this folder
+  - Creates a 'csv' folder within each processed directory
+  - All generated CSV files are stored in their respective 'csv' folders
   - No need to specify separate output directory
-  - Example: If processing `/data/pdfs`, CSVs will be in `/data/pdfs/csv`
+  - Maintains hierarchy when using recursive mode
+  - Example: If processing `/data/pdfs/folder1`, CSVs will be in `/data/pdfs/folder1/csv`
 
 ### PDF Processing Improvements
 - Fixed multi-page PDF handling

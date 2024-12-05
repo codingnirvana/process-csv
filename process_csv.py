@@ -381,10 +381,27 @@ def process_files(input_dir):
             # Add a small delay to avoid rate limiting
             time.sleep(1)
 
+def process_directory(directory):
+    """Recursively process all PDF and JPG files in directory and its subdirectories."""
+    # Get all files in current directory
+    files = [f for f in os.listdir(directory) if f.lower().endswith(('.pdf', '.jpg', '.jpeg'))]
+    
+    if files:
+        print(f"\nProcessing directory: {directory}")
+        process_files(directory)
+    
+    # Recursively process subdirectories
+    for item in os.listdir(directory):
+        item_path = os.path.join(directory, item)
+        if os.path.isdir(item_path) and item != 'csv':  # Skip 'csv' directories
+            process_directory(item_path)
+
 def main():
     """Main function to handle command line arguments and process files."""
     parser = argparse.ArgumentParser(description='Process PDF and JPG files to extract CSV data.')
     parser.add_argument('input_dir', help='Directory containing PDF and JPG files to process')
+    parser.add_argument('--recursive', '-r', action='store_true', 
+                       help='Recursively process subdirectories')
     
     args = parser.parse_args()
     
@@ -394,7 +411,10 @@ def main():
         return
     
     # Process the files
-    process_files(args.input_dir)
+    if args.recursive:
+        process_directory(args.input_dir)
+    else:
+        process_files(args.input_dir)
 
 if __name__ == "__main__":
     main()
