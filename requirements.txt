@@ -2,3 +2,4 @@ google-generativeai
 requests
 python-dotenv
 tqdm
+PyPDF2
