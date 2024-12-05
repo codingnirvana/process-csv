@@ -2,10 +2,14 @@ import streamlit as st
 from settings import get_settings, get_storage
 import google.generativeai as genai
 from gdrive_handler import GDriveHandler
+from oauth_handler import initialize_oauth, create_flow
 import os
 
-def show_welcome_screen(create_flow):
+def show_welcome_screen():
     """Show welcome screen with setup instructions"""
+    # Initialize OAuth settings
+    initialize_oauth()
+    
     st.markdown("""
     # Welcome to PDF to CSV Converter! 🎉
     
@@ -58,12 +62,6 @@ def show_welcome_screen(create_flow):
                 genai.configure(api_key=api_key_input)
                 model = genai.GenerativeModel('gemini-pro')
                 response = model.generate_content("Test")
-                
-                # If no error, save the key
-                key_file = os.path.join(os.path.expanduser('~'), '.pdf_to_csv_apikey')
-                with open(key_file, 'w') as f:
-                    f.write(api_key_input)
-                
                 st.success("✅ API Key is valid!")
             except Exception as e:
                 st.error("❌ Invalid API Key. Please check and try again.")
@@ -84,9 +82,8 @@ def show_welcome_screen(create_flow):
         # Google Drive connection
         if st.button("Connect to Google Drive"):
             try:
-                # Create new flow instance and store in session state
                 flow = create_flow()
-                auth_url, _ = flow.authorization_url()
+                auth_url, _ = flow.authorization_url(prompt='consent')
                 st.session_state.oauth_flow = flow  # Store flow in session state
                 st.markdown(f'Click [here]({auth_url}) to connect your Google account')
             except Exception as e:
@@ -99,15 +96,6 @@ def show_welcome_screen(create_flow):
         st.success("🎉 Setup complete! You're ready to start converting PDFs.")
         st.button("Start Using the App", type="primary")
         st.rerun()
-    else:
-        missing = []
-        if not api_key:
-            missing.append("Gemini API key")
-        if not st.session_state.get('credentials'):
-            missing.append("Google Drive connection")
-        
-        if missing:
-            st.info(f"Complete setup: Missing {' and '.join(missing)}")
 
 def show_settings_menu():
     """Show the settings menu in the sidebar"""

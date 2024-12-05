@@ -60,6 +60,37 @@ def extract_csv_from_pdf(pdf_path, api_key, model_name='gemini-1.5-flash'):
         logging.error(f"Error in extract_csv_from_pdf: {str(e)}")
         return None
 
+def process_pdf_with_gemini(api_key, model, text_content):
+    """Process PDF content using Gemini API with rate limit handling"""
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(model)
+        
+        prompt = """Extract tables from the following text content and convert them to CSV format. 
+        If there are multiple tables, process each one separately.
+        Return only the CSV content, with no additional text or formatting.
+        If no tables are found, respond with 'NO_TABLES_FOUND'.
+        
+        Text content:
+        {text_content}
+        """
+        
+        response = model.generate_content(prompt.format(text_content=text_content))
+        
+        if not response.text or response.text.strip() == "":
+            return "No valid response from the model"
+            
+        return response.text.strip()
+        
+    except Exception as e:
+        error_msg = str(e).lower()
+        if "rate limit" in error_msg:
+            return "RATE_LIMIT_ERROR: The API rate limit has been exceeded. Please try again in about an hour."
+        elif "quota exceeded" in error_msg:
+            return "QUOTA_ERROR: Your API quota has been exceeded. Please check your usage limits."
+        else:
+            return f"ERROR: {str(e)}"
+
 def save_csv_data(csv_data, csv_path):
     """Saves the extracted CSV data to a file."""
     try:

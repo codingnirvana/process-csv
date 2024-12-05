@@ -4,17 +4,19 @@ st.set_page_config(page_title="PDF to CSV Converter", layout="wide")
 import os
 import time
 import tempfile
-from google_auth_oauthlib.flow import Flow
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
 from gdrive_handler import GDriveHandler
 from process_csv import extract_csv_from_pdf, save_csv_data
 from dotenv import load_dotenv
 from settings import show_settings, check_settings, get_settings, get_storage
 import traceback
+from oauth_handler import (
+    initialize_oauth,
+    handle_oauth_callback,
+    create_flow
+)
 
 # Load environment variables from .env file
-load_dotenv()
+load_dotenv(dotenv_path=".env", override=True)
 
 # OAuth 2.0 configuration
 SCOPES = [
@@ -25,48 +27,6 @@ SCOPES = [
     'https://www.googleapis.com/auth/userinfo.profile',  # Get user's basic profile info
     'openid'  # OpenID Connect
 ]
-
-def create_flow():
-    """Create OAuth 2.0 flow instance"""
-    try:
-        client_id = os.getenv('GOOGLE_CLIENT_ID')
-        client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
-        is_production = os.getenv('PRODUCTION', 'false').lower() == 'true'
-        
-        if not client_id or not client_secret:
-            raise ValueError("Missing OAuth credentials. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET")
-
-        # Hardcode the exact production URI that's being used in the request
-        prod_uri = "https://pdf-to-csv-paani.streamlit.app/"
-        dev_uri = "http://localhost:8501/"
-
-        # Set the redirect URI based on environment
-        redirect_uri = prod_uri if is_production else dev_uri
-
-        client_config = {
-            "web": {
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [redirect_uri],
-            }
-        }
-
-        flow = Flow.from_client_config(
-            client_config,
-            scopes=SCOPES,
-            redirect_uri=redirect_uri
-        )
-
-        # Match exact parameters from the request
-        flow.access_type = 'offline'
-        flow.prompt = 'consent'
-        
-        return flow
-    except Exception as e:
-        st.error(f"Failed to create OAuth flow: {str(e)}")
-        raise
 
 def save_oauth_credentials(credentials):
     """Save OAuth credentials to local storage"""
@@ -104,71 +64,11 @@ def load_oauth_credentials():
             return None
     return None
 
-def handle_oauth_callback():
-    """Handle OAuth callback and token exchange"""
-    try:
-        if st.session_state.oauth_flow is None:
-            st.session_state.oauth_flow = create_flow()
-        
-        # Get the authorization code from URL parameters
-        code = st.query_params.get('code')
-        if not code:
-            st.error("No authorization code received")
-            return
-        
-        # Exchange code for tokens
-        token = st.session_state.oauth_flow.fetch_token(
-            authorization_response=f"http://localhost:8501/?code={code}",
-            code=code
-        )
-        
-        # Store credentials in session state and local storage
-        st.session_state.credentials = st.session_state.oauth_flow.credentials
-        save_oauth_credentials(st.session_state.credentials)
-        
-        # Clear the URL parameters
-        st.query_params.clear()
-        
-        st.success("Successfully connected to Google Drive!")
-        st.rerun()
-        
-    except Exception as e:
-        st.error(f"Authentication failed: {str(e)}")
-        if 'access_denied' in str(e):
-            st.error("""
-            ### Access Denied
-            
-            This error typically occurs when:
-            1. Your Google account is not added as a test user
-            2. You're using a different Google account than the one added as a test user
-            3. You didn't accept the unverified app warning
-            
-            Please make sure:
-            1. Your Google email is added as a test user in the OAuth consent screen
-            2. You're using the same Google account during login
-            3. Click "Continue" on the unverified app warning
-            """)
-        elif 'invalid_grant' in str(e):
-            st.error("""
-            ### Invalid Grant Error
-            
-            This typically happens when:
-            1. The authentication session expired
-            2. The authorization code was already used
-            3. There's a mismatch in redirect URIs
-            
-            Please try:
-            1. Clicking the 'Connect to Google Drive' button again
-            2. Using a fresh browser session
-            3. Clearing your browser cookies
-            """)
-            # Reset credentials and flow
-            st.session_state.credentials = None
-            st.session_state.oauth_flow = None
-            # Clear stored credentials
-            storage = get_storage()
-            storage.delete_credential('oauth_credentials')
-        return
+def disconnect_google_drive():
+    """Disconnect from Google Drive"""
+    st.session_state.credentials = None
+    st.session_state.oauth_flow = None
+    st.success("Disconnected from Google Drive")
 
 def process_pdf_file(pdf_file):
     """Process the uploaded PDF file"""
@@ -240,50 +140,41 @@ def process_pdf_file(pdf_file):
 def main():
     st.title("PDF to CSV Converter with Google Drive")
     
-    # Custom CSS for better styling
-    st.markdown("""
-        <style>
-        .main .block-container {
-            padding-top: 2rem;
-            padding-bottom: 2rem;
-        }
-        .status-section {
-            font-size: 0.9rem;
-            margin-bottom: 1rem;
-        }
-        .status-section .success {
-            color: #00c853;
-            padding: 0.3rem 0;
-        }
-        .status-section .error {
-            color: #ff1744;
-            padding: 0.3rem 0;
-        }
-        h1 {
-            font-size: 1.8rem !important;
-            font-weight: 600 !important;
-        }
-        h3 {
-            font-size: 1rem !important;
-            font-weight: 600 !important;
-            color: #666;
-            margin-top: 1rem !important;
-        }
-        .stButton button {
-            border-radius: 4px;
-            padding: 0.3rem 1rem;
-        }
-        .settings-btn button {
-            padding: 0.2rem 0.5rem;
-            min-width: 2rem;
-        }
-        .back-btn {
-            max-width: 150px;
-            margin: 0 auto;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
+    # Initialize OAuth settings
+    initialize_oauth()
+    
+    # Check for OAuth callback
+    if 'code' in st.query_params:
+        handle_oauth_callback()
+        return
+    
+    # Handle OAuth connection
+    if not st.session_state.credentials:
+        st.info("""
+        ### Google Drive Authentication Required
+        
+        This app requires Google Drive access to store processed files. Since the app is in testing mode:
+        1. You must be added as a test user
+        2. Use the same Google account that was added as a test user
+        3. Accept the unverified app warning during login
+        """)
+        
+        if st.button("Connect to Google Drive"):
+            try:
+                # Create and store flow
+                flow = create_flow()
+                auth_url, _ = flow.authorization_url(prompt='consent')
+                
+                # Store flow in session state BEFORE generating URL
+                st.session_state.oauth_flow = flow
+                
+                # Show auth URL
+                st.markdown(f'Click [here]({auth_url}) to connect your Google account')
+                return
+            except Exception as e:
+                st.error(f"Failed to create authentication flow: {str(e)}")
+                return
+    
     # Initialize session states
     if 'credentials' not in st.session_state:
         st.session_state.credentials = load_oauth_credentials()
@@ -302,36 +193,38 @@ def main():
         # Add logo/title section with refined styling
         st.markdown("""
         <div style='text-align: center; margin-bottom: 1rem'>
-            <h1 style='font-size: 1.3rem; margin-bottom: 0.5rem; color: #1e88e5'>🔄 PDF to CSV</h1>
-            <p style='color: #666; font-size: 0.8rem; margin-bottom: 0.5rem'>Powered by Gemini AI</p>
+            <h3>PDF to CSV Converter</h3>
+            <p style='color: #666; font-size: 0.9rem'>Powered by Gemini AI</p>
         </div>
         """, unsafe_allow_html=True)
         
-        st.markdown("<div style='margin: 1rem 0; border-top: 1px solid #eee;'></div>", unsafe_allow_html=True)
-        
-        # Status Section with refined styling
-        st.markdown("<div class='status-section'>", unsafe_allow_html=True)
-        st.markdown("### System Status")
-        
-        # API Status with Settings link
-        col1, col2 = st.columns([4, 1])
-        with col1:
-            if api_key:
-                st.markdown("<div class='success'>✓ Gemini API</div>", unsafe_allow_html=True)
-            else:
-                st.markdown("<div class='error'>✗ Gemini API</div>", unsafe_allow_html=True)
-        with col2:
-            st.markdown("<div class='settings-btn'>", unsafe_allow_html=True)
-            if st.button("⚙️", help="Configure API Settings", key="settings_btn"):
-                st.session_state.show_settings = True
-            st.markdown("</div>", unsafe_allow_html=True)
-        
-        # Google Drive Status
+        # Settings button
+        if st.button("⚙️ Settings", key="settings_btn", help="Configure API keys and model settings"):
+            st.session_state.show_settings = not st.session_state.show_settings
+            
+        # Google Drive connection status and buttons
+        st.markdown("### Google Drive Connection")
         if st.session_state.credentials:
-            st.markdown("<div class='success'>✓ Google Drive</div>", unsafe_allow_html=True)
+            st.success("✓ Connected to Google Drive")
+            if st.button("Disconnect from Google Drive", type="secondary"):
+                disconnect_google_drive()
         else:
-            st.markdown("<div class='error'>✗ Google Drive</div>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+            st.error("✗ Not connected to Google Drive")
+            if st.button("Connect to Google Drive"):
+                try:
+                    # Create and store flow
+                    flow = create_flow()
+                    auth_url, _ = flow.authorization_url(prompt='consent')
+                    
+                    # Store flow in session state BEFORE generating URL
+                    st.session_state.oauth_flow = flow
+                    
+                    # Show auth URL
+                    st.markdown(f'Click [here]({auth_url}) to connect your Google account')
+                    return
+                except Exception as e:
+                    st.error(f"Failed to create authentication flow: {str(e)}")
+                    return
     
     # Show settings page or main app
     if st.session_state.show_settings:
@@ -347,32 +240,6 @@ def main():
         st.warning("⚠️ Please configure your Gemini API key in settings first!")
         return
     
-    # Check for OAuth callback
-    if 'code' in st.query_params:
-        handle_oauth_callback()
-        return
-    
-    # Main app logic
-    if not st.session_state.credentials:
-        st.info("""
-        ### Google Drive Authentication Required
-        
-        This app requires Google Drive access to store processed files. Since the app is in testing mode:
-        1. You must be added as a test user
-        2. Use the same Google account that was added as a test user
-        3. Accept the unverified app warning during login
-        """)
-        
-        # Handle OAuth callback
-        if st.button("Connect to Google Drive"):
-            try:
-                st.session_state.oauth_flow = create_flow()
-                auth_url, _ = st.session_state.oauth_flow.authorization_url(prompt='consent')
-                st.markdown(f'Click [here]({auth_url}) to connect your Google account')
-            except Exception as e:
-                st.error(f"Failed to create authentication flow: {str(e)}")
-            return  # Add return here to prevent showing the rest of the interface
-        
     try:
         # Verify credentials are valid by making a test API call
         gdrive_handler = GDriveHandler(st.session_state.credentials)
