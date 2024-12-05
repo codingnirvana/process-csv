@@ -2,6 +2,13 @@
 
 ## [2024-11-05] Bug Fixes and Improvements
 
+### Directory Structure Changes
+- Simplified output organization
+  - Creates a 'csv' folder within the input directory
+  - All generated CSV files are stored in this folder
+  - No need to specify separate output directory
+  - Example: If processing `/data/pdfs`, CSVs will be in `/data/pdfs/csv`
+
 ### PDF Processing Improvements
 - Fixed multi-page PDF handling
   - Each PDF is now split into individual pages
@@ -68,3 +75,4 @@ To test these changes:
 4. Test JPEG file processing
 5. Verify retry mechanism on failed files
 6. Check CSV files for clean formatting
+7. Verify CSVs are created in the 'csv' subfolder
