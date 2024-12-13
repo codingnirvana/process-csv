@@ -19,9 +19,13 @@ os.environ['GRPC_PYTHON_LOG_LEVEL'] = 'error'
 
 # Load environment variables from .env file
 load_dotenv()
+key = os.getenv('GEMINI_API_KEY')
+
+if key is None:
+    raise ValueError("GEMINI_API_KEY not found in .env file")
 
 # Initialize the Gemini API with your API key
-genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
+genai.configure(api_key=key)
 
 # Global model instance
 model = None
@@ -53,7 +57,7 @@ def get_model():
             "top_p": 0.1,
             "top_k": 16
         }
-        model = genai.GenerativeModel(model_name="gemini-1.5-flash", generation_config=generation_config)
+        model = genai.GenerativeModel(model_name="gemini-2.0-flash-exp", generation_config=generation_config)
     return model
 
 def handle_rate_limit(e, page_num=None):
