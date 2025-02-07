@@ -57,7 +57,7 @@ def get_model():
             "top_p": 0.1,
             "top_k": 16
         }
-        model = genai.GenerativeModel(model_name="gemini-2.0-flash-exp", generation_config=generation_config)
+        model = genai.GenerativeModel(model_name="gemini-2.0-flash", generation_config=generation_config)
     return model
 
 def handle_rate_limit(e, page_num=None):
@@ -74,60 +74,58 @@ def handle_rate_limit(e, page_num=None):
 
 def get_extraction_prompt(file_type="", page_info=""):
     """Get the appropriate prompt for data extraction."""
-    base_prompt = """Extract ALL tabular data from this {file_type}{page_info} and format it as CSV. Additionally, identify the collection date and station code if present.
-    
-    Important Instructions:
-    1. FIRST, extract key metadata and return on the FIRST line in this format:
-       #METADATA:YYYY-MM;XXX
-       where:
-       - YYYY-MM is the collection date (optional, e.g., 2020-08)
-       - XXX is the station code (optional)
-       Example: #METADATA:2020-08;123
-       Note: Leave empty fields blank but keep the semicolon
-       Examples: 
-       - Just date: #METADATA:2020-08;
-       - Just station: #METADATA:;123
-       - No metadata: #METADATA:;
-       
-    2. Then identify the main data table in the document
-    3. Extract EVERY row from the identified table
-    4. Include the COMPLETE header row exactly as shown
-    5. Keep ALL columns present in the table
-    6. Preserve ALL numerical values exactly as they appear
-    7. Format dates consistently with the source
-    8. Format as proper CSV with commas between fields
-    9. Each row must be on a new line
-    10. Do not summarize, calculate, or modify any data
-    11. If there are multiple tables, focus on the largest/main table
-    12. Preserve units in column headers (e.g., "Value in mg/L")
-    
-    Critical Column Alignment Rules:
-    1. Count the TOTAL number of columns in the header row
-    2. Each data row MUST have exactly the same number of columns as the header
-    3. Values MUST align with their correct column headers
-    4. If a column is empty in a row:
-       - Add an empty field (i.e., two commas together)
-       - Do NOT shift values from other columns to fill the gap
-    5. For merged cells or spanning columns:
-       - Repeat the value across its span width
-       - Maintain alignment with headers above
-    
-    Value Handling Rules:
-    1. For missing or empty values:
-       - Use empty field (two commas: ,,)
-    2. For unclear or unreadable values:
-       - Use "???" for completely unreadable values
-       - Use "?" for unclear digits (e.g., "12?.?5")
-    3. For merged or spanning cells:
-       - Repeat the value in all relevant columns
-    
-    Example Output Format:
-    #METADATA:2020-08;123
-    Header1,Header2,Header3,Header4,Header5
-    value1,,value3,value4,value5
-    value1,value2,,,value5
-    
-    Extract the data following these rules exactly."""
+    base_prompt = """
+Extract ALL tabular data from this {file_type}{page_info} and format it as CSV. Additionally, identify the collection date and station code if present.
+
+Important Instructions:
+
+1.  **METADATA Extraction (FIRST LINE):**
+    *   Format: `#METADATA:YYYY-MM;XXX`
+    *   `YYYY-MM`: Collection date (optional, e.g., 2020-08).
+    *   `XXX`: Station code (optional).
+    *   Keep the semicolon even if fields are empty.
+    *   Examples:
+        *   `#METADATA:2020-08;123` (both present)
+        *   `#METADATA:2020-08;` (only date)
+        *   `#METADATA:;123` (only station)
+        *   `#METADATA:;` (neither present)
+
+2.  **Table Identification:** Identify the main data table in the document. If there are multiple tables, focus on the largest/main table.
+
+3.  **CSV Formatting (RFC 4180 Compliant):**
+    *   **Header Row:** Extract the COMPLETE header row *exactly* as shown.  This is your column definition.
+    *   **Data Rows:** Extract EVERY row from the identified table.
+    *   **Comma Delimiter:** Use commas (`,`) to separate fields (columns).
+    *   **Double Quotes for Commas and Quotes:**
+        *   **For all text fields (except dates), enclose the *entire* field in double quotes (").**  This is crucial for correct parsing.
+        *   **If a field contains a double quote ("), replace each double quote with *two* double quotes ("").** This escapes the double quote within the field.
+    *   **Newlines:** Each row MUST be on a new line (use `\n` if necessary).
+    *   **Column Count:** Each data row MUST have *exactly* the same number of columns as the header row.  This ensures proper alignment.
+
+4.  **Data Preservation and Handling:**
+    *   **Preserve Values:** Keep ALL numerical values *exactly* as they appear. Do NOT modify them.
+    *   **Date Format:**  Maintain the original date format from the source.
+    *   **Units:** Preserve units in column headers (e.g., "Value (mg/L)").
+    *   **Empty Fields:**  If a column is empty in a row, use an empty field (`,,`). Do *NOT* shift values.
+    *   **Merged/Spanning Cells:** Repeat the value across the entire span width of the merged cell, aligning with each corresponding header.  This is crucial for maintaining the correct number of columns.
+
+5.  **Unclear/Missing Values:**
+    *   **Empty Values:** Use an empty field (`,,`).
+    *   **Unreadable Values:** Use `"???"` (enclosed in double quotes) for completely unreadable values.
+    *   **Unclear Digits:** Use `?` for unclear digits, and if the uncertainty makes the whole field ambiguous, enclose it in double quotes (e.g., `"12?.?5"`).
+
+6.  **No Modification:** Do NOT summarize, calculate, filter, or modify the data in any way, *except* as required for proper CSV formatting (quoting and escaping).
+
+Example Output Format (with commas and quotes in data):
+
+```
+#METADATA:2023-10;ABC
+Column Header 1,Column Header 2,Column Header 3 (mg/L),Date,Notes
+123,"Value, with comma",4.56,2023-10-26,"This is a ""quoted"" note."
+456,,7.89,2023-10-27,
+789,"Another, value",,"2023-10-28",Another note
+,"Missing first",1.23,2023-10-29,
+```"""
     
     return base_prompt.format(
         file_type=file_type,
